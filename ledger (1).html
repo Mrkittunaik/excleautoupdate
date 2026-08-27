@@ -1,0 +1,1120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Ledger</title>
+<style>
+  :root{
+    --bg:#FFFFFF;
+    --card:#F7F8F9;
+    --card-hi:#EFF1F3;
+    --line:#E4E7EA;
+    --gold:#0FBE8F;
+    --gold-dim:#0C9973;
+    --text:#14171A;
+    --muted:#7A828A;
+    --danger:#E0503C;
+    --radius:5px;
+    --nav-h:74px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    overscroll-behavior:none;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{display:flex; flex-direction:column; height:100vh; height:100dvh; max-width:520px; margin:0 auto; position:relative; overflow:hidden; box-shadow:0 0 40px rgba(0,0,0,.06);}
+
+  /* ---------- LOGIN SCREEN ---------- */
+  #loginScreen{
+    position:absolute; inset:0; z-index:100; background:var(--bg);
+    display:flex; flex-direction:column; justify-content:center; padding:32px;
+  }
+  .login-logo{
+    width:56px; height:56px; border-radius:5px;
+    background:linear-gradient(145deg,#0FBE8F,#0C9973);
+    display:flex; align-items:center; justify-content:center; margin-bottom:24px;
+  }
+  .login-title{font-size:26px; font-weight:700; letter-spacing:-.4px; margin-bottom:6px;}
+  .login-sub{font-size:14px; color:var(--muted); margin-bottom:32px; line-height:1.5;}
+  .login-tabs{display:flex; gap:6px; background:var(--card); border:1px solid var(--line); border-radius:5px; padding:4px; margin-bottom:24px;}
+  .login-tab{flex:1; text-align:center; padding:10px; border-radius:5px; font-size:13.5px; font-weight:600; color:var(--muted); cursor:pointer; transition:all .15s;}
+  .login-tab.active{background:#FFFFFF; color:var(--text); box-shadow:0 1px 3px rgba(20,23,26,.08);}
+  .login-panel{display:none;}
+  .login-panel.active{display:block;}
+  .login-error{
+    background:rgba(224,80,60,.08); border:1px solid rgba(224,80,60,.2); color:var(--danger);
+    border-radius:5px; padding:12px 14px; font-size:13px; margin-bottom:16px; display:none; line-height:1.4;
+  }
+  .login-error.show{display:block;}
+  .key-display{
+    background:var(--card); border:1px dashed var(--line); border-radius:5px;
+    padding:18px; text-align:center; margin-bottom:16px; display:none;
+  }
+  .key-display.show{display:block;}
+  .key-display-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;}
+  .key-display-value{font-size:19px; font-weight:700; letter-spacing:1px; font-variant-numeric:tabular-nums; word-break:break-all;}
+  .key-display-hint{font-size:12px; color:var(--muted); margin-top:10px; line-height:1.4;}
+  .device-note{font-size:12px; color:var(--muted); text-align:center; margin-top:16px; line-height:1.5;}
+
+  /* ---------- TOP BAR ---------- */
+  .topbar{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 18px 12px; flex-shrink:0;
+  }
+  .brand{display:flex; align-items:center; gap:10px; cursor:pointer; user-select:none;}
+  .brand-icon{
+    width:38px; height:38px; border-radius:5px;
+    background:linear-gradient(145deg,#0FBE8F,#0C9973);
+    display:flex; align-items:center; justify-content:center;
+    border:none;
+  }
+  .brand-text{display:flex; flex-direction:column; line-height:1.15;}
+  .brand-title{font-size:15px; font-weight:600; letter-spacing:.2px;}
+  .brand-sub{font-size:11.5px; color:var(--muted); display:flex; align-items:center; gap:5px;}
+  .dot{width:6px; height:6px; border-radius:50%; background:#0FBE8F; box-shadow:0 0 6px #0fbe8f88; flex-shrink:0;}
+  .dot.stale{background:var(--muted); box-shadow:none;}
+  .chev{color:var(--muted); transition:transform .2s;}
+  .brand.open .chev{transform:rotate(180deg);}
+
+  /* ---------- SHEET SWITCHER (kept as connect-sheet panel) ---------- */
+  .switcher-backdrop{
+    position:absolute; inset:0; background:rgba(20,23,26,.35); z-index:40;
+    opacity:0; pointer-events:none; transition:opacity .2s;
+  }
+  .switcher-backdrop.show{opacity:1; pointer-events:auto;}
+
+  /* ---------- SCREENS ---------- */
+  .screen{
+    flex:1; overflow-y:auto; padding:4px 18px calc(var(--nav-h) + 24px);
+    display:none;
+  }
+  .screen.active{display:block;}
+
+  .section-title{font-size:22px; font-weight:700; margin:10px 0 4px; letter-spacing:-.3px;}
+  .section-sub{font-size:13px; color:var(--muted); margin-bottom:18px;}
+
+  /* ---------- CARDS (list) ---------- */
+  .row-card{
+    background:#FFFFFF; border:1px solid var(--line); border-radius:5px;
+    padding:16px; margin-bottom:12px; position:relative; overflow:hidden;
+    transition:transform .15s; box-shadow:0 1px 2px rgba(20,23,26,.04);
+  }
+  .row-card:active{transform:scale(.985);}
+  .row-card-top{display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;}
+  .row-card-primary{font-size:16px; font-weight:600;}
+  .row-card-price{font-size:16px; font-weight:700; color:var(--gold); font-variant-numeric:tabular-nums;}
+  .row-card-fields{display:flex; flex-wrap:wrap; gap:6px 14px;}
+  .field-chip{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:5px;}
+  .field-chip b{color:var(--text); font-weight:500; font-variant-numeric:tabular-nums;}
+
+  .empty-state{ text-align:center; padding:70px 20px 20px; color:var(--muted); }
+  .empty-state svg{margin-bottom:16px; opacity:.5;}
+  .empty-state h3{color:var(--text); font-size:16px; margin:0 0 6px;}
+  .empty-state p{font-size:13px; margin:0; line-height:1.5;}
+
+  /* ---------- STATS ---------- */
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;}
+  .stat-card{ background:#FFFFFF; border:1px solid var(--line); border-radius:5px; padding:18px 16px; box-shadow:0 1px 2px rgba(20,23,26,.04); }
+  .stat-card.wide{grid-column:1/-1;}
+  .stat-label{font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px;}
+  .stat-value{font-size:26px; font-weight:700; font-variant-numeric:tabular-nums; letter-spacing:-.5px;}
+  .stat-value.gold{color:var(--gold);}
+  .stat-hint{font-size:12px; color:var(--muted); margin-top:4px;}
+
+  /* ---------- SETTINGS ---------- */
+  .settings-group{ background:#FFFFFF; border:1px solid var(--line); border-radius:5px; margin-bottom:16px; overflow:hidden; box-shadow:0 1px 2px rgba(20,23,26,.04); }
+  .settings-group-title{ font-size:11.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; padding:14px 16px 8px; }
+  .settings-row{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-top:1px solid var(--line); }
+  .settings-row:first-of-type{border-top:none;}
+  .settings-row-label{font-size:14.5px;}
+  .settings-row-sub{font-size:12px; color:var(--muted); margin-top:2px;}
+  .col-type-badge{ font-size:10.5px; padding:3px 8px; border-radius:5px; background:var(--card-hi); color:var(--muted); text-transform:uppercase; letter-spacing:.4px; }
+  .device-badge{ font-size:10.5px; padding:3px 8px; border-radius:5px; background:rgba(15,190,143,.12); color:var(--gold-dim); font-weight:600; }
+  .icon-btn{ width:34px; height:34px; border-radius:5px; display:flex; align-items:center; justify-content:center; background:transparent; border:none; color:var(--muted); cursor:pointer; }
+  .icon-btn:active{background:var(--card-hi);}
+  .icon-btn.danger:active{color:var(--danger);}
+
+  input, select{ background:#FFFFFF; border:1px solid var(--line); color:var(--text); border-radius:5px; padding:13px 14px; font-size:15px; width:100%; font-family:inherit; }
+  input:focus, select:focus{outline:none; border-color:var(--gold);}
+  label{font-size:12.5px; color:var(--muted); display:block; margin:0 0 6px; font-weight:500;}
+  .field-group{margin-bottom:16px;}
+
+  .btn{ display:flex; align-items:center; justify-content:center; gap:8px; padding:15px; border-radius:5px; font-size:15px; font-weight:600; border:none; cursor:pointer; width:100%; font-family:inherit; transition:transform .12s, background .15s; }
+  .btn:active{transform:scale(.98);}
+  .btn:disabled{opacity:.55; pointer-events:none;}
+  .btn-gold{background:var(--gold); color:#FFFFFF;}
+  .btn-gold:active{background:var(--gold-dim);}
+  .btn-ghost{background:var(--card); color:var(--text); border:1px solid var(--line);}
+  .btn-ghost:active{background:var(--card-hi);}
+  .btn-danger-ghost{background:rgba(224,80,60,.08); color:var(--danger); border:1px solid rgba(224,80,60,.2);}
+
+  /* ---------- BOTTOM NAV ---------- */
+  .bottom-nav{ position:absolute; bottom:0; left:0; right:0; height:var(--nav-h); background:rgba(255,255,255,.92); backdrop-filter:blur(20px); border-top:1px solid var(--line); display:flex; align-items:center; justify-content:space-around; padding-bottom:env(safe-area-inset-bottom); z-index:20; max-width:520px; margin:0 auto; }
+  .nav-item{ display:flex; flex-direction:column; align-items:center; gap:5px; color:var(--muted); background:none; border:none; padding:8px 16px; cursor:pointer; position:relative; z-index:1; font-family:inherit; transition:color .2s; }
+  .nav-item svg{transition:transform .3s cubic-bezier(.34,1.56,.64,1);}
+  .nav-item.active{color:var(--gold);}
+  .nav-item.active svg{transform:scale(1.14);}
+  .nav-item span{font-size:10.5px; font-weight:600; letter-spacing:.2px; transition:transform .25s;}
+  .nav-item.fab{ background:var(--gold); width:52px; height:52px; border-radius:5px; margin-top:-30px; box-shadow:0 8px 20px rgba(15,190,143,.35); color:#FFFFFF; justify-content:center; transition:transform .15s, background .15s; }
+  .nav-item.fab svg{transition:transform .2s;}
+  .nav-item.fab span{display:none;}
+  .nav-item.fab:active{background:var(--gold-dim); transform:scale(.92) rotate(90deg);}
+
+  /* ---------- OVERLAYS ---------- */
+  .overlay{ position:absolute; inset:0; background:#FFFFFF; z-index:50; display:flex; flex-direction:column; transform:translateY(100%); transition:transform .28s cubic-bezier(.2,.8,.2,1); }
+  .overlay.show{transform:translateY(0);}
+  .overlay-header{ display:flex; align-items:center; justify-content:space-between; padding:18px; flex-shrink:0; }
+  .overlay-close{ width:36px; height:36px; border-radius:5px; background:var(--card); border:none; display:flex; align-items:center; justify-content:center; color:var(--text); cursor:pointer; }
+  .progress-track{ display:flex; gap:5px; padding:0 18px; flex-shrink:0; margin-bottom:6px; }
+  .progress-seg{height:3px; flex:1; background:var(--line); border-radius:5px; overflow:hidden;}
+  .progress-seg .fill{height:100%; width:0; background:var(--gold); transition:width .25s;}
+  .progress-count{text-align:center; font-size:12px; color:var(--muted); margin-bottom:24px;}
+
+  .flow-body{flex:1; display:flex; flex-direction:column; padding:0 24px; overflow-y:auto;}
+  .flow-label{font-size:12.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.6px; margin-bottom:10px;}
+  .flow-col-name{font-size:26px; font-weight:700; margin-bottom:24px; letter-spacing:-.4px;}
+  .flow-input{ background:var(--card); border:2px solid var(--line); color:var(--text); border-radius:5px; padding:18px; font-size:19px; width:100%; font-family:inherit; margin-bottom:16px; }
+  .flow-input:focus{outline:none; border-color:var(--gold);}
+
+  .chip-row{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px;}
+  .chip{ padding:10px 16px; border-radius:5px; background:var(--card); border:1px solid var(--line); font-size:13.5px; color:var(--text); cursor:pointer; transition:transform .12s; }
+  .chip:active{transform:scale(.95);}
+  .chip.selected{background:rgba(15,190,143,.1); border-color:var(--gold); color:var(--gold-dim);}
+
+  .flow-footer{padding:18px 24px calc(env(safe-area-inset-bottom) + 18px); flex-shrink:0;}
+
+  .edit-field{margin-bottom:16px;}
+  .edit-field label{margin-bottom:8px;}
+
+  .toast{ position:absolute; bottom:calc(var(--nav-h) + 18px); left:50%; transform:translateX(-50%) translateY(10px); background:#14171A; color:#FFFFFF; border:none; padding:11px 18px; border-radius:5px; font-size:13px; opacity:0; transition:all .25s; z-index:60; pointer-events:none; display:flex; align-items:center; gap:8px; white-space:nowrap; box-shadow:0 8px 24px rgba(20,23,26,.2); }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .nav-pill{ position:absolute; top:8px; height:38px; border-radius:5px; background:rgba(15,190,143,.12); z-index:-1; transition:left .32s cubic-bezier(.34,1.56,.64,1), width .32s cubic-bezier(.34,1.56,.64,1); }
+
+  ::-webkit-scrollbar{display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- LOGIN SCREEN -->
+  <div id="loginScreen">
+    <div class="login-logo">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9l3 3v13H6z"/><path d="M15 4v3h3"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+    </div>
+    <div class="login-title">Ledger</div>
+    <div class="login-sub">Your key is your account. Use it to log in on up to 5 devices at once.</div>
+
+    <div class="login-tabs">
+      <div class="login-tab active" data-tab="login">Log in</div>
+      <div class="login-tab" data-tab="create">Create account</div>
+    </div>
+
+    <div class="login-error" id="loginError"></div>
+
+    <!-- LOG IN with existing key -->
+    <div class="login-panel active" id="panel-login">
+      <div class="field-group">
+        <label>Your key</label>
+        <input type="text" id="loginKeyInput" placeholder="e.g. LEDG-8F3K-QZ9X-2MRT" autocapitalize="off" autocorrect="off">
+      </div>
+      <button class="btn btn-gold" id="loginBtn">Log in</button>
+      <button class="btn btn-ghost" id="testKeyBtn" style="margin-top:10px;">Use test key (TEST-1234)</button>
+      <div class="device-note">This device will be added to your account (up to 5 total).</div>
+    </div>
+
+    <!-- CREATE new account -->
+    <div class="login-panel" id="panel-create">
+      <div class="chip-row" style="margin-bottom:16px;">
+        <div class="chip selected" data-createmode="auto">Generate a key for me</div>
+        <div class="chip" data-createmode="custom">I'll pick my own key</div>
+      </div>
+      <div class="field-group" id="customKeyGroup" style="display:none;">
+        <label>Choose a key</label>
+        <input type="text" id="customKeyInput" placeholder="e.g. my-secret-key-2026" autocapitalize="off" autocorrect="off">
+      </div>
+      <button class="btn btn-gold" id="createBtn">Create account</button>
+
+      <div class="key-display" id="keyDisplay">
+        <div class="key-display-label">Your key — save this</div>
+        <div class="key-display-value" id="keyDisplayValue"></div>
+        <div class="key-display-hint">This is the only way to log back in or into another device. Anthropic and this app do not store a password recovery option — if you lose this key, you lose access to this account.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP BAR -->
+  <div class="topbar">
+    <div class="brand" id="brandBtn">
+      <div class="brand-icon">
+        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h9l3 3v13H6z"/><path d="M15 4v3h3"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+      </div>
+      <div class="brand-text">
+        <div class="brand-title" id="brandTitle">No sheet connected</div>
+        <div class="brand-sub"><span class="dot stale" id="syncDot"></span><span id="syncLabel">tap to connect</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="switcher-backdrop" id="switchBackdrop"></div>
+
+  <!-- LIST SCREEN -->
+  <div class="screen active" id="screen-list">
+    <div class="section-title">Entries</div>
+    <div class="section-sub" id="listSub">Tap a card to edit</div>
+    <div id="listContent"></div>
+  </div>
+
+  <!-- STATS SCREEN -->
+  <div class="screen" id="screen-stats">
+    <div class="section-title">Stats</div>
+    <div class="section-sub">Live summary of this sheet</div>
+    <div id="statsContent"></div>
+  </div>
+
+  <!-- SETTINGS SCREEN -->
+  <div class="screen" id="screen-settings">
+    <div class="section-title">Settings</div>
+    <div class="section-sub">Manage your account, devices, columns, and connection</div>
+    <div id="settingsContent"></div>
+  </div>
+
+  <!-- BOTTOM NAV -->
+  <div class="bottom-nav" id="bottomNav">
+    <div class="nav-pill" id="navPill"></div>
+    <button class="nav-item active" data-nav="list">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="4" rx="1"/><rect x="3" y="10" width="18" height="4" rx="1"/><rect x="3" y="16" width="18" height="4" rx="1"/></svg>
+      <span>List</span>
+    </button>
+    <button class="nav-item fab" id="fabAdd">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    </button>
+    <button class="nav-item" data-nav="stats">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></svg>
+      <span>Stats</span>
+    </button>
+    <button class="nav-item" data-nav="settings">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Settings</span>
+    </button>
+  </div>
+
+  <!-- ADD FLOW OVERLAY -->
+  <div class="overlay" id="addOverlay">
+    <div class="overlay-header">
+      <div style="font-size:15px;font-weight:600;">New entry</div>
+      <button class="overlay-close" id="closeAdd">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="progress-track" id="progressTrack"></div>
+    <div class="progress-count" id="progressCount"></div>
+    <div class="flow-body" id="flowBody"></div>
+    <div class="flow-footer">
+      <button class="btn btn-gold" id="flowNextBtn">Next</button>
+    </div>
+  </div>
+
+  <!-- EDIT OVERLAY -->
+  <div class="overlay" id="editOverlay">
+    <div class="overlay-header">
+      <div style="font-size:15px;font-weight:600;">Edit entry</div>
+      <button class="overlay-close" id="closeEdit">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="flow-body" id="editBody" style="padding-top:8px;"></div>
+    <div class="flow-footer" style="display:flex; gap:10px;">
+      <button class="btn btn-danger-ghost" id="deleteRowBtn" style="flex:0 0 auto; width:52px;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+      </button>
+      <button class="btn btn-gold" id="doneEditBtn" style="flex:1;">Done editing</button>
+    </div>
+  </div>
+
+  <!-- CONNECT SHEET OVERLAY -->
+  <div class="overlay" id="connectOverlay">
+    <div class="overlay-header">
+      <div style="font-size:15px;font-weight:600;">Connect a sheet</div>
+      <button class="overlay-close" id="closeConnect">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="flow-body" style="padding-top:8px;">
+      <div class="field-group">
+        <label>Sheet nickname</label>
+        <input type="text" id="connectName" placeholder="e.g. Expenses">
+      </div>
+      <div class="field-group">
+        <label>Apps Script Web App URL</label>
+        <input type="text" id="connectUrl" placeholder="https://script.google.com/macros/s/...">
+      </div>
+      <div class="section-sub" style="margin-top:-4px;">Extensions → Apps Script in your sheet → paste the provided script → Deploy → Web app → copy the URL here. This connection is saved to your account and syncs to every device you log into.</div>
+    </div>
+    <div class="flow-footer">
+      <button class="btn btn-gold" id="saveConnectBtn">Connect sheet</button>
+    </div>
+  </div>
+
+  <!-- COLUMN SETUP OVERLAY -->
+  <div class="overlay" id="columnOverlay">
+    <div class="overlay-header">
+      <div style="font-size:15px;font-weight:600;" id="columnOverlayTitle">Add column</div>
+      <button class="overlay-close" id="closeColumn">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="flow-body" style="padding-top:8px;">
+      <div class="field-group">
+        <label>Column name</label>
+        <input type="text" id="colName" placeholder="e.g. Price">
+      </div>
+      <div class="field-group">
+        <label>Field type</label>
+        <select id="colType">
+          <option value="text">Text</option>
+          <option value="number">Number</option>
+          <option value="date">Date</option>
+          <option value="time">Time</option>
+          <option value="choice">Choice (preset options)</option>
+        </select>
+      </div>
+      <div class="field-group" id="choiceOptionsGroup" style="display:none;">
+        <label>Options</label>
+        <div class="chip-row" id="choiceOptionsList"></div>
+        <div style="display:flex; gap:8px;">
+          <input type="text" id="newOptionInput" placeholder="e.g. Food">
+          <button class="icon-btn" id="addOptionBtn" style="background:var(--card-hi); border:1px solid var(--line); flex-shrink:0; width:48px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="flow-footer">
+      <button class="btn btn-gold" id="saveColumnBtn">Save column</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+/* ============ CONFIG ============ */
+// Point this at your deployed backend, e.g. https://your-app.onrender.com
+const API_BASE = window.LEDGER_API_BASE || 'http://localhost:4000/api';
+
+/* ============ AUTH STATE ============ */
+function getDeviceId(){
+  let id = localStorage.getItem('deviceId');
+  if(!id){
+    id = 'dev_' + Date.now().toString(36) + Math.random().toString(36).slice(2,10);
+    localStorage.setItem('deviceId', id);
+  }
+  return id;
+}
+function getDeviceLabel(){
+  const ua = navigator.userAgent;
+  let label = 'This device';
+  if(/iPhone/.test(ua)) label = 'iPhone';
+  else if(/iPad/.test(ua)) label = 'iPad';
+  else if(/Android/.test(ua)) label = 'Android';
+  else if(/Mac/.test(ua)) label = 'Mac';
+  else if(/Windows/.test(ua)) label = 'Windows PC';
+  return label;
+}
+function getToken(){ return localStorage.getItem('authToken'); }
+function setToken(t){ localStorage.setItem('authToken', t); }
+function clearToken(){ localStorage.removeItem('authToken'); }
+
+async function apiFetch(path, opts={}){
+  const headers = Object.assign({
+    'Content-Type':'application/json',
+    'X-Device-Id': getDeviceId()
+  }, opts.headers||{});
+  const token = getToken();
+  if(token) headers['Authorization'] = 'Bearer ' + token;
+  const res = await fetch(API_BASE + path, Object.assign({}, opts, { headers }));
+  let data = {};
+  try{ data = await res.json(); }catch(e){}
+  if(!res.ok){
+    const err = new Error(data.error || 'Request failed');
+    err.status = res.status;
+    err.data = data;
+    throw err;
+  }
+  return data;
+}
+
+/* ============ STATE ============ */
+let account = { key:'', sheetName:'', sheetUrl:'', columns:[] };
+let rowsCache = null; // {headers, rows}
+let pollTimer = null;
+let flowState = { colIndex:0, values:{}, columns:[] };
+let editState = { rowIndex:null, values:{} };
+
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), 2200);
+}
+function escapeHtml(str){ return String(str??'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+/* ============ LOGIN SCREEN ============ */
+const loginScreen = document.getElementById('loginScreen');
+const loginError = document.getElementById('loginError');
+
+document.querySelectorAll('.login-tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('.login-tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.login-panel').forEach(p=>p.classList.remove('active'));
+    document.getElementById('panel-'+tab.dataset.tab).classList.add('active');
+    loginError.classList.remove('show');
+  });
+});
+
+let createMode = 'auto';
+document.querySelectorAll('[data-createmode]').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('[data-createmode]').forEach(c=>c.classList.remove('selected'));
+    chip.classList.add('selected');
+    createMode = chip.dataset.createmode;
+    document.getElementById('customKeyGroup').style.display = createMode==='custom' ? 'block' : 'none';
+  });
+});
+
+function showLoginError(msg){
+  loginError.textContent = msg;
+  loginError.classList.add('show');
+}
+
+document.getElementById('loginBtn').addEventListener('click', async ()=>{
+  const key = document.getElementById('loginKeyInput').value.trim();
+  if(!key){ showLoginError('Enter your key to log in.'); return; }
+  const btn = document.getElementById('loginBtn');
+  btn.disabled = true; btn.textContent = 'Logging in...';
+  loginError.classList.remove('show');
+  try{
+    const data = await apiFetch('/auth/login', {
+      method:'POST',
+      body: JSON.stringify({ key, deviceId:getDeviceId(), label:getDeviceLabel() })
+    });
+    setToken(data.token);
+    await enterApp();
+  }catch(err){
+    showLoginError(err.data?.error || 'Could not log in. Check your key and try again.');
+  }
+  btn.disabled = false; btn.textContent = 'Log in';
+});
+
+document.getElementById('testKeyBtn').addEventListener('click', ()=>{
+  document.getElementById('loginKeyInput').value = 'TEST-1234';
+  document.getElementById('loginBtn').click();
+});
+
+document.getElementById('createBtn').addEventListener('click', async ()=>{
+  const btn = document.getElementById('createBtn');
+  const body = { deviceId:getDeviceId(), label:getDeviceLabel() };
+  if(createMode==='custom'){
+    const custom = document.getElementById('customKeyInput').value.trim();
+    if(!custom){ showLoginError("Enter a key you'd like to use."); return; }
+    body.key = custom;
+  }
+  btn.disabled = true; btn.textContent = 'Creating...';
+  loginError.classList.remove('show');
+  try{
+    const data = await apiFetch('/auth/create', { method:'POST', body: JSON.stringify(body) });
+    setToken(data.token);
+    const kd = document.getElementById('keyDisplay');
+    document.getElementById('keyDisplayValue').textContent = data.key;
+    kd.classList.add('show');
+    toast('Account created');
+    setTimeout(()=>{ enterApp(); }, 1400);
+  }catch(err){
+    showLoginError(err.data?.error || 'Could not create account. Try a different key.');
+  }
+  btn.disabled = false; btn.textContent = 'Create account';
+});
+
+async function tryAutoLogin(){
+  if(!getToken()) return false;
+  try{
+    const data = await apiFetch('/account');
+    account = data;
+    return true;
+  }catch(err){
+    clearToken();
+    return false;
+  }
+}
+
+async function enterApp(){
+  try{
+    const data = await apiFetch('/account');
+    account = data;
+  }catch(err){
+    toast('Could not load your account');
+    return;
+  }
+  loginScreen.style.display = 'none';
+  refreshTopbar();
+  renderList();
+  if(account.sheetUrl) await fetchSheet(false);
+  renderList();
+  startPolling();
+}
+
+/* ============ NAV ============ */
+function movePillTo(btn){
+  const pill = document.getElementById('navPill');
+  const nav = document.getElementById('bottomNav');
+  const navRect = nav.getBoundingClientRect();
+  const btnRect = btn.getBoundingClientRect();
+  pill.style.left = (btnRect.left - navRect.left) + 'px';
+  pill.style.width = btnRect.width + 'px';
+}
+document.querySelectorAll('.nav-item[data-nav]').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('.nav-item[data-nav]').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    movePillTo(btn);
+    document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+    document.getElementById('screen-'+btn.dataset.nav).classList.add('active');
+    if(btn.dataset.nav==='stats') renderStats();
+    if(btn.dataset.nav==='settings') renderSettings();
+    if(btn.dataset.nav==='list') renderList();
+  });
+});
+setTimeout(()=>{
+  const activeBtn = document.querySelector('.nav-item[data-nav].active');
+  if(activeBtn) movePillTo(activeBtn);
+}, 50);
+
+/* ============ TOP BAR ============ */
+document.getElementById('brandBtn').addEventListener('click', ()=>{
+  document.querySelector('[data-nav="settings"]').click();
+});
+function refreshTopbar(){
+  document.getElementById('brandTitle').textContent = account.sheetName || 'No sheet connected';
+  document.getElementById('syncLabel').textContent = account.sheetUrl ? 'synced just now' : 'tap to connect a sheet';
+  document.getElementById('syncDot').classList.toggle('stale', !account.sheetUrl);
+}
+
+/* ============ CONNECT SHEET FLOW ============ */
+const connectOverlay = document.getElementById('connectOverlay');
+function openConnect(){
+  document.getElementById('connectName').value = account.sheetName || '';
+  document.getElementById('connectUrl').value = account.sheetUrl || '';
+  connectOverlay.classList.add('show');
+}
+document.getElementById('closeConnect').addEventListener('click', ()=>connectOverlay.classList.remove('show'));
+document.getElementById('saveConnectBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('connectName').value.trim();
+  const url = document.getElementById('connectUrl').value.trim();
+  if(!name || !url){ toast('Enter a name and URL'); return; }
+  try{
+    await apiFetch('/account/sheet', { method:'PUT', body: JSON.stringify({ sheetName:name, sheetUrl:url }) });
+    account.sheetName = name;
+    account.sheetUrl = url;
+    connectOverlay.classList.remove('show');
+    refreshTopbar();
+    toast('Sheet connected — synced to all your devices');
+    await fetchSheet(true);
+    if(!account.columns.length && rowsCache?.headers?.length){
+      account.columns = rowsCache.headers.map(h=>({id:uid(), name:h, type:'text'}));
+      await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) });
+    }
+    renderList();
+    renderSettings();
+  }catch(err){
+    toast(err.data?.error || 'Failed to connect sheet');
+  }
+});
+
+/* ============ FETCH / SYNC (sheet data, via backend proxy) ============ */
+async function fetchSheet(showToast){
+  if(!account.sheetUrl) return;
+  try{
+    const data = await apiFetch('/sheet/read');
+    rowsCache = data;
+    document.getElementById('syncDot').classList.remove('stale');
+    document.getElementById('syncLabel').textContent = 'synced just now';
+    if(document.getElementById('screen-list').classList.contains('active')) renderList();
+    if(document.getElementById('screen-stats').classList.contains('active')) renderStats();
+    if(showToast) toast('Synced');
+  }catch(err){
+    document.getElementById('syncDot').classList.add('stale');
+    document.getElementById('syncLabel').textContent = 'sync failed';
+  }
+}
+function startPolling(){
+  clearInterval(pollTimer);
+  pollTimer = setInterval(()=>{ if(account.sheetUrl) fetchSheet(false); }, 6000);
+}
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && account.sheetUrl) fetchSheet(false); });
+
+/* ============ LIST SCREEN ============ */
+function renderList(){
+  const listContent = document.getElementById('listContent');
+  const listSub = document.getElementById('listSub');
+  if(!account.sheetUrl){
+    listSub.textContent = 'Connect a sheet to get started';
+    listContent.innerHTML = emptyState('No sheet connected', 'Tap the icon at the top to connect your first Google Sheet.');
+    return;
+  }
+  if(!rowsCache || !rowsCache.rows || rowsCache.rows.length===0){
+    listSub.textContent = 'Tap the + button to add your first entry';
+    listContent.innerHTML = emptyState('No entries yet', 'Add your first row using the + button below.');
+    return;
+  }
+  const cols = account.columns.length ? account.columns : rowsCache.headers.map(h=>({name:h,type:'text'}));
+  const primaryCol = cols[0];
+  const priceCol = cols.find(c=>c.type==='number');
+
+  const rowsSorted = [...rowsCache.rows].reverse();
+  listContent.innerHTML = rowsSorted.map(r=>{
+    const primary = r.data[primaryCol?.name] ?? '—';
+    const price = priceCol ? r.data[priceCol.name] : null;
+    const chips = cols.slice(1).filter(c=>c!==priceCol).map(c=>{
+      const val = r.data[c.name];
+      if(val===undefined || val==='') return '';
+      return `<div class="field-chip">${escapeHtml(c.name)}: <b>${escapeHtml(val)}</b></div>`;
+    }).join('');
+    return `<div class="row-card" data-row="${r.rowIndex}">
+      <div class="row-card-top">
+        <div class="row-card-primary">${escapeHtml(primary)}</div>
+        ${price!==null && price!==undefined && price!=='' ? `<div class="row-card-price">${escapeHtml(price)}</div>` : ''}
+      </div>
+      <div class="row-card-fields">${chips}</div>
+    </div>`;
+  }).join('');
+
+  listContent.querySelectorAll('.row-card').forEach(card=>{
+    card.addEventListener('click', ()=>openEdit(card.dataset.row));
+  });
+}
+function emptyState(title, sub){
+  return `<div class="empty-state">
+    <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#8A8D93" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/></svg>
+    <h3>${title}</h3><p>${sub}</p>
+  </div>`;
+}
+
+/* ============ ADD FLOW ============ */
+const addOverlay = document.getElementById('addOverlay');
+document.getElementById('fabAdd').addEventListener('click', ()=>{
+  if(!account.sheetUrl){ toast('Connect a sheet first'); openConnect(); return; }
+  if(!account.columns.length){ toast('Add columns in Settings first'); return; }
+  flowState = { colIndex:0, values:{}, columns:account.columns };
+  addOverlay.classList.add('show');
+  renderFlowStep();
+});
+document.getElementById('closeAdd').addEventListener('click', ()=>addOverlay.classList.remove('show'));
+
+function renderFlowStep(){
+  const { colIndex, columns } = flowState;
+  const col = columns[colIndex];
+  const track = document.getElementById('progressTrack');
+  track.innerHTML = columns.map((_,i)=>`<div class="progress-seg"><div class="fill" style="width:${i<colIndex?'100%':i===colIndex?'50%':'0%'}"></div></div>`).join('');
+  document.getElementById('progressCount').textContent = `${colIndex+1} of ${columns.length}`;
+
+  const body = document.getElementById('flowBody');
+  let inner = `<div class="flow-label">${col.type}</div><div class="flow-col-name">${escapeHtml(col.name)}</div>`;
+
+  if(col.type==='date'){
+    const today = new Date().toISOString().slice(0,10);
+    inner += `<input type="date" class="flow-input" id="flowInput" value="${flowState.values[col.name]||today}">`;
+  } else if(col.type==='time'){
+    const now = new Date().toTimeString().slice(0,5);
+    inner += `<input type="time" class="flow-input" id="flowInput" value="${flowState.values[col.name]||now}">`;
+    inner += `<div class="chip-row"><div class="chip" data-time="now">Now</div><div class="chip" data-time="last">Last used</div></div>`;
+  } else if(col.type==='number'){
+    inner += `<input type="number" inputmode="decimal" class="flow-input" id="flowInput" placeholder="0" value="${flowState.values[col.name]||''}">`;
+  } else if(col.type==='choice'){
+    inner += `<input type="hidden" id="flowInput" value="${escapeHtml(flowState.values[col.name]||'')}">
+      <div class="chip-row" id="choiceChipRow"></div>
+      <div id="choiceAddRow" style="display:none; gap:8px; margin-bottom:16px;">
+        <input type="text" id="choiceNewInput" placeholder="New option" style="background:var(--card); border:2px solid var(--line); border-radius:11px; padding:12px 14px; flex:1;">
+        <button class="icon-btn" id="choiceAddConfirm" style="background:var(--gold); color:#171308; flex-shrink:0; width:46px; border-radius:11px;">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </button>
+      </div>`;
+  } else {
+    inner += `<input type="text" class="flow-input" id="flowInput" placeholder="Type here" value="${flowState.values[col.name]||''}">`;
+  }
+  body.innerHTML = inner;
+
+  const input = document.getElementById('flowInput');
+
+  if(col.type==='choice'){
+    renderChoiceChips(col);
+  } else {
+    setTimeout(()=>input.focus(), 250);
+    input.addEventListener('keydown', e=>{ if(e.key==='Enter') handleFlowNext(); });
+  }
+
+  body.querySelectorAll('.chip[data-time]').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      if(chip.dataset.time==='now') input.value = new Date().toTimeString().slice(0,5);
+      if(chip.dataset.time==='last') input.value = localStorage.getItem('lastTime_'+col.name) || input.value;
+    });
+  });
+
+  document.getElementById('flowNextBtn').textContent = colIndex===columns.length-1 ? 'Submit' : 'Next';
+}
+
+function renderChoiceChips(col){
+  const row = document.getElementById('choiceChipRow');
+  const input = document.getElementById('flowInput');
+  const opts = col.options || [];
+  row.innerHTML = opts.map(o=>`<div class="chip ${input.value===o?'selected':''}" data-choice="${escapeHtml(o)}">${escapeHtml(o)}</div>`).join('')
+    + `<div class="chip" id="choiceAddNewChip" style="border-style:dashed;">+ Add new</div>`;
+
+  row.querySelectorAll('[data-choice]').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      input.value = chip.dataset.choice;
+      document.getElementById('choiceAddRow').style.display='none';
+      renderChoiceChips(col);
+    });
+  });
+  document.getElementById('choiceAddNewChip').addEventListener('click', ()=>{
+    const addRow = document.getElementById('choiceAddRow');
+    addRow.style.display='flex';
+    const ni = document.getElementById('choiceNewInput');
+    setTimeout(()=>ni.focus(),100);
+    ni.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); confirmNewChoice(col); } });
+    document.getElementById('choiceAddConfirm').onclick = ()=>confirmNewChoice(col);
+  });
+}
+async function confirmNewChoice(col){
+  const ni = document.getElementById('choiceNewInput');
+  const val = ni.value.trim();
+  if(!val) return;
+  if(!col.options.includes(val)){
+    col.options.push(val);
+    try{ await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) }); }catch(e){}
+  }
+  document.getElementById('flowInput').value = val;
+  document.getElementById('choiceAddRow').style.display='none';
+  renderChoiceChips(col);
+}
+
+function handleFlowNext(){
+  const { colIndex, columns } = flowState;
+  const col = columns[colIndex];
+  const input = document.getElementById('flowInput');
+  flowState.values[col.name] = input.value;
+  if(col.type==='time') localStorage.setItem('lastTime_'+col.name, input.value);
+
+  if(colIndex < columns.length-1){
+    flowState.colIndex++;
+    renderFlowStep();
+  } else {
+    submitNewRow();
+  }
+}
+document.getElementById('flowNextBtn').addEventListener('click', handleFlowNext);
+
+async function submitNewRow(){
+  const btn = document.getElementById('flowNextBtn');
+  btn.textContent = 'Saving...';
+  try{
+    await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'append', row: flowState.values }) });
+    toast('Entry added');
+  }catch(err){
+    toast('Failed to save — try again');
+  }
+  addOverlay.classList.remove('show');
+  btn.textContent = 'Submit';
+  await fetchSheet(false);
+  renderList();
+}
+
+/* ============ EDIT FLOW ============ */
+const editOverlay = document.getElementById('editOverlay');
+function openEdit(rowIndex){
+  const row = rowsCache.rows.find(r=>String(r.rowIndex)===String(rowIndex));
+  if(!row) return;
+  editState = { rowIndex, values: {...row.data} };
+  const cols = account.columns.length ? account.columns : rowsCache.headers.map(h=>({name:h,type:'text'}));
+
+  const body = document.getElementById('editBody');
+  body.innerHTML = cols.map(col=>{
+    const val = editState.values[col.name] ?? '';
+    if(col.type==='choice'){
+      const opts = col.options || [];
+      const chips = opts.map(o=>`<div class="chip ${val===o?'selected':''}" data-editchoice="${escapeHtml(o)}" data-editfield="${escapeHtml(col.name)}">${escapeHtml(o)}</div>`).join('');
+      return `<div class="edit-field">
+        <label>${escapeHtml(col.name)}</label>
+        <input type="hidden" data-field="${escapeHtml(col.name)}" value="${escapeHtml(val)}">
+        <div class="chip-row">${chips}</div>
+      </div>`;
+    }
+    const type = col.type==='number' ? 'number' : col.type==='date' ? 'date' : col.type==='time' ? 'time' : 'text';
+    return `<div class="edit-field">
+      <label>${escapeHtml(col.name)}</label>
+      <input type="${type}" data-field="${escapeHtml(col.name)}" value="${escapeHtml(val)}">
+    </div>`;
+  }).join('');
+
+  body.querySelectorAll('[data-editchoice]').forEach(chip=>{
+    chip.addEventListener('click', ()=>{
+      const field = chip.dataset.editfield;
+      body.querySelector(`input[data-field="${CSS.escape(field)}"]`).value = chip.dataset.editchoice;
+      body.querySelectorAll(`[data-editfield="${CSS.escape(field)}"]`).forEach(c=>c.classList.remove('selected'));
+      chip.classList.add('selected');
+    });
+  });
+
+  editOverlay.classList.add('show');
+}
+document.getElementById('closeEdit').addEventListener('click', ()=>editOverlay.classList.remove('show'));
+document.getElementById('doneEditBtn').addEventListener('click', async ()=>{
+  const inputs = document.querySelectorAll('#editBody input');
+  const row = {};
+  inputs.forEach(i=> row[i.dataset.field] = i.value);
+  const btn = document.getElementById('doneEditBtn');
+  btn.textContent = 'Saving...';
+  try{
+    await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'update', rowIndex: editState.rowIndex, row }) });
+    toast('Saved');
+  }catch(err){
+    toast('Failed to save — try again');
+  }
+  editOverlay.classList.remove('show');
+  btn.textContent = 'Done editing';
+  await fetchSheet(false);
+  renderList();
+});
+document.getElementById('deleteRowBtn').addEventListener('click', async ()=>{
+  if(!confirm('Delete this entry?')) return;
+  try{
+    await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'delete', rowIndex: editState.rowIndex }) });
+    toast('Deleted');
+  }catch(err){
+    toast('Failed to delete — try again');
+  }
+  editOverlay.classList.remove('show');
+  await fetchSheet(false);
+  renderList();
+});
+
+/* ============ STATS SCREEN ============ */
+function renderStats(){
+  const content = document.getElementById('statsContent');
+  if(!account.sheetUrl || !rowsCache){ content.innerHTML = emptyState('No data yet','Connect a sheet and add entries to see stats.'); return; }
+  const cols = account.columns.length ? account.columns : rowsCache.headers.map(h=>({name:h,type:'text'}));
+  const numberCol = cols.find(c=>c.type==='number');
+  const dateCol = cols.find(c=>c.type==='date');
+
+  const total = rowsCache.rows.length;
+  let sum = 0;
+  if(numberCol) rowsCache.rows.forEach(r=>{ const v = parseFloat(r.data[numberCol.name]); if(!isNaN(v)) sum += v; });
+
+  const todayStr = new Date().toISOString().slice(0,10);
+  let todayCount = 0;
+  if(dateCol) todayCount = rowsCache.rows.filter(r=> String(r.data[dateCol.name]).slice(0,10)===todayStr).length;
+
+  content.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-label">Total entries</div><div class="stat-value">${total}</div></div>
+      <div class="stat-card"><div class="stat-label">Today</div><div class="stat-value">${dateCol? todayCount : '—'}</div></div>
+      ${numberCol ? `<div class="stat-card wide"><div class="stat-label">Sum of ${escapeHtml(numberCol.name)}</div><div class="stat-value gold">${sum.toLocaleString(undefined,{maximumFractionDigits:2})}</div><div class="stat-hint">Across all ${total} entries</div></div>` : ''}
+    </div>`;
+}
+
+/* ============ SETTINGS SCREEN ============ */
+async function renderSettings(){
+  const content = document.getElementById('settingsContent');
+
+  let devicesHtml = `<div class="settings-row"><div class="settings-row-sub">Loading devices...</div></div>`;
+  let devices = [];
+  try{
+    const d = await apiFetch('/auth/devices');
+    devices = d.devices;
+  }catch(e){}
+
+  devicesHtml = devices.map(dev=>`
+    <div class="settings-row">
+      <div>
+        <div class="settings-row-label">${escapeHtml(dev.label)} ${dev.isCurrent ? '<span class="device-badge">This device</span>' : ''}</div>
+        <div class="settings-row-sub">Last active ${new Date(dev.lastSeen).toLocaleString()}</div>
+      </div>
+      ${!dev.isCurrent ? `<button class="icon-btn danger" data-logoutdevice="${escapeHtml(dev.deviceId)}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>` : ''}
+    </div>`).join('');
+
+  let html = `<div class="settings-group">
+    <div class="settings-group-title">Your account</div>
+    <div class="settings-row">
+      <div><div class="settings-row-label">Login key</div><div class="settings-row-sub">Use this to log in on other devices</div></div>
+    </div>
+    <div class="settings-row" style="padding-top:0;">
+      <div style="font-size:14px; font-weight:600; letter-spacing:.5px; font-variant-numeric:tabular-nums;">${escapeHtml(account.key || '')}</div>
+    </div>
+  </div>`;
+
+  html += `<div class="settings-group">
+    <div class="settings-group-title">Devices (${devices.length}/5)</div>
+    ${devicesHtml || '<div class="settings-row"><div class="settings-row-sub">No devices found</div></div>'}
+  </div>`;
+
+  html += `<button class="btn btn-danger-ghost" id="logoutBtn" style="margin-bottom:16px;">Log out of this device</button>`;
+
+  html += `<div class="settings-group">
+    <div class="settings-group-title">Connection</div>
+    ${account.sheetUrl ? `<div class="settings-row"><div><div class="settings-row-label">${escapeHtml(account.sheetName)}</div><div class="settings-row-sub">${escapeHtml((account.sheetUrl||'').slice(0,38))}...</div></div></div>` : `<div class="settings-row"><div class="settings-row-sub">No sheet connected</div></div>`}
+  </div>
+  <button class="btn btn-ghost" id="connectBtn" style="margin-bottom:16px;">${account.sheetUrl ? 'Update sheet connection' : 'Connect a sheet'}</button>`;
+
+  html += `<div class="settings-group">
+    <div class="settings-group-title">Columns</div>`;
+  if(!account.columns.length){
+    html += `<div class="settings-row"><div class="settings-row-sub">No columns yet — add one below</div></div>`;
+  }
+  account.columns.forEach(col=>{
+    html += `<div class="settings-row">
+      <div><div class="settings-row-label">${escapeHtml(col.name)}</div></div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <span class="col-type-badge">${col.type}</span>
+        <button class="icon-btn danger" data-delcol="${col.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>`;
+  });
+  html += `</div>
+    <button class="btn btn-ghost" id="addColBtn" style="margin-bottom:16px;">+ Add column</button>`;
+
+  if(account.sheetUrl){
+    html += `<button class="btn btn-danger-ghost" id="disconnectSheetBtn">Disconnect this sheet</button>`;
+  }
+
+  content.innerHTML = html;
+
+  document.getElementById('connectBtn')?.addEventListener('click', openConnect);
+  document.getElementById('addColBtn').addEventListener('click', ()=>openColumnOverlay());
+  content.querySelectorAll('[data-delcol]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      account.columns = account.columns.filter(c=>c.id!==btn.dataset.delcol);
+      try{ await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) }); }catch(e){}
+      renderSettings();
+    });
+  });
+  content.querySelectorAll('[data-logoutdevice]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Log that device out?')) return;
+      try{
+        await apiFetch('/auth/logout-device', { method:'POST', body: JSON.stringify({ deviceId: btn.dataset.logoutdevice }) });
+        toast('Device logged out');
+        renderSettings();
+      }catch(e){ toast('Failed to log out that device'); }
+    });
+  });
+  document.getElementById('disconnectSheetBtn')?.addEventListener('click', async ()=>{
+    if(!confirm('Disconnect this sheet from your account?')) return;
+    try{
+      await apiFetch('/account/sheet', { method:'DELETE' });
+      account.sheetName = ''; account.sheetUrl = ''; account.columns = [];
+      rowsCache = null;
+      refreshTopbar();
+      renderSettings();
+      renderList();
+      toast('Sheet disconnected');
+    }catch(e){ toast('Failed to disconnect'); }
+  });
+  document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+    if(!confirm('Log out of this device?')) return;
+    try{ await apiFetch('/auth/logout', { method:'POST' }); }catch(e){}
+    clearToken();
+    location.reload();
+  });
+}
+
+/* ============ COLUMN OVERLAY ============ */
+const columnOverlay = document.getElementById('columnOverlay');
+let draftOptions = [];
+
+function openColumnOverlay(){
+  document.getElementById('colName').value='';
+  document.getElementById('colType').value='text';
+  draftOptions = [];
+  renderDraftOptions();
+  document.getElementById('choiceOptionsGroup').style.display='none';
+  columnOverlay.classList.add('show');
+}
+document.getElementById('closeColumn').addEventListener('click', ()=>columnOverlay.classList.remove('show'));
+
+document.getElementById('colType').addEventListener('change', (e)=>{
+  document.getElementById('choiceOptionsGroup').style.display = e.target.value==='choice' ? 'block' : 'none';
+});
+
+function renderDraftOptions(){
+  const list = document.getElementById('choiceOptionsList');
+  if(!draftOptions.length){
+    list.innerHTML = `<div style="font-size:12.5px;color:var(--muted);">No options yet — add some below</div>`;
+    return;
+  }
+  list.innerHTML = draftOptions.map((opt,i)=>`
+    <div class="chip selected" style="display:flex; align-items:center; gap:8px;">
+      ${escapeHtml(opt)}
+      <span data-removeopt="${i}" style="cursor:pointer; opacity:.7;">✕</span>
+    </div>`).join('');
+  list.querySelectorAll('[data-removeopt]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      draftOptions.splice(parseInt(el.dataset.removeopt),1);
+      renderDraftOptions();
+    });
+  });
+}
+function addDraftOption(){
+  const input = document.getElementById('newOptionInput');
+  const val = input.value.trim();
+  if(!val) return;
+  if(draftOptions.includes(val)){ input.value=''; return; }
+  draftOptions.push(val);
+  input.value='';
+  renderDraftOptions();
+}
+document.getElementById('addOptionBtn').addEventListener('click', addDraftOption);
+document.getElementById('newOptionInput').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); addDraftOption(); } });
+
+document.getElementById('saveColumnBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('colName').value.trim();
+  const type = document.getElementById('colType').value;
+  if(!name){ toast('Enter a column name'); return; }
+  if(type==='choice' && draftOptions.length===0){ toast('Add at least one option'); return; }
+  const col = { id: uid(), name, type };
+  if(type==='choice') col.options = [...draftOptions];
+  account.columns.push(col);
+  try{
+    await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) });
+  }catch(e){ toast('Failed to save column'); }
+  columnOverlay.classList.remove('show');
+  renderSettings();
+  toast('Column added — synced to all devices');
+  // push header update to sheet
+  if(account.sheetUrl){
+    apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'setHeaders', headers: account.columns.map(c=>c.name) }) }).catch(()=>{});
+  }
+});
+
+/* ============ INIT ============ */
+(async function init(){
+  const ok = await tryAutoLogin();
+  if(ok){
+    await enterApp();
+  } else {
+    loginScreen.style.display = 'flex';
+  }
+})();
+</script>
+</body>
+</html>
