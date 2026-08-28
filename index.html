@@ -111,6 +111,18 @@
   .field-chip{font-size:12px; color:var(--muted); display:flex; align-items:center; gap:5px;}
   .field-chip b{color:var(--text); font-weight:500; font-variant-numeric:tabular-nums;}
 
+  /* ---------- GRID (spreadsheet) VIEW ---------- */
+  .grid-wrap{ overflow-x:auto; border:1px solid var(--line); border-radius:5px; -webkit-overflow-scrolling:touch; }
+  .grid-table{ border-collapse:collapse; width:100%; min-width:100%; font-size:13px; }
+  .grid-table th{ position:sticky; top:0; padding:10px 12px; text-align:left; font-weight:700; white-space:nowrap; color:#fff; }
+  .grid-table td{ padding:0; border-bottom:1px solid var(--line); border-right:1px solid var(--line); white-space:nowrap; }
+  .grid-table tr:last-child td{ border-bottom:none; }
+  .grid-table td:last-child, .grid-table th:last-child{ border-right:none; }
+  .grid-cell{ display:block; padding:9px 12px; font-size:13px; color:var(--text); background:transparent; border:none; width:100%; min-width:90px; font-family:inherit; }
+  .grid-cell:focus{ outline:2px solid var(--gold); outline-offset:-2px; background:var(--card); }
+  .grid-row-actions{ padding:6px 8px !important; text-align:center; }
+  .grid-table tbody tr:hover{ background:var(--card); }
+
   .empty-state{ text-align:center; padding:70px 20px 20px; color:var(--muted); }
   .empty-state svg{margin-bottom:16px; opacity:.5;}
   .empty-state h3{color:var(--text); font-size:16px; margin:0 0 6px;}
@@ -264,9 +276,16 @@
 
   <!-- LIST SCREEN -->
   <div class="screen active" id="screen-list">
-    <div class="section-title">Entries</div>
+    <div style="display:flex; align-items:center; justify-content:space-between;">
+      <div class="section-title" style="margin-bottom:0;">Entries</div>
+      <div class="login-tabs" style="width:auto; margin-bottom:0;">
+        <div class="login-tab active" id="viewTabCards" data-view="cards">Cards</div>
+        <div class="login-tab" id="viewTabGrid" data-view="grid">Grid</div>
+      </div>
+    </div>
     <div class="section-sub" id="listSub">Tap a card to edit</div>
     <div id="listContent"></div>
+    <div id="gridContent" style="display:none;"></div>
   </div>
 
   <!-- STATS SCREEN -->
@@ -392,6 +411,17 @@
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
           </button>
         </div>
+      </div>
+      <div class="field-group">
+        <label>Header color</label>
+        <div style="display:flex; align-items:center; gap:10px;">
+          <input type="color" id="colColor" value="#0FBE8F" style="width:48px; height:44px; padding:3px; cursor:pointer;">
+          <div class="chip-row" id="colorPresets" style="flex:1;"></div>
+        </div>
+      </div>
+      <div class="field-group">
+        <label>Preview</label>
+        <div id="colPreview" style="display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid var(--line); border-radius:5px; padding:12px 14px;"></div>
       </div>
     </div>
     <div class="flow-footer">
@@ -590,7 +620,7 @@ document.querySelectorAll('.nav-item[data-nav]').forEach(btn=>{
     document.getElementById('screen-'+btn.dataset.nav).classList.add('active');
     if(btn.dataset.nav==='stats') renderStats();
     if(btn.dataset.nav==='settings') renderSettings();
-    if(btn.dataset.nav==='list') renderList();
+    if(btn.dataset.nav==='list'){ if(currentView==='grid') renderGrid(); else renderList(); }
   });
 });
 setTimeout(()=>{
@@ -640,26 +670,71 @@ document.getElementById('saveConnectBtn').addEventListener('click', async ()=>{
 });
 
 /* ============ FETCH / SYNC (sheet data, via backend proxy) ============ */
+let pendingCount = 0;
+
 async function fetchSheet(showToast){
   if(!account.sheetUrl) return;
   try{
     const data = await apiFetch('/sheet/read');
     rowsCache = data;
+    pendingCount = data.pendingCount || 0;
+    if(data.justSynced) toast(`Reconnected — synced ${data.justSynced} offline ${data.justSynced===1?'entry':'entries'}`);
     document.getElementById('syncDot').classList.remove('stale');
-    document.getElementById('syncLabel').textContent = 'synced just now';
-    if(document.getElementById('screen-list').classList.contains('active')) renderList();
+    document.getElementById('syncLabel').textContent = pendingCount ? `${pendingCount} pending sync` : 'synced just now';
+    if(document.getElementById('screen-list').classList.contains('active')){
+      if(currentView==='grid') renderGrid(); else renderList();
+    }
     if(document.getElementById('screen-stats').classList.contains('active')) renderStats();
     if(showToast) toast('Synced');
   }catch(err){
+    pendingCount = err.data?.pendingCount ?? pendingCount;
     document.getElementById('syncDot').classList.add('stale');
-    document.getElementById('syncLabel').textContent = 'sync failed';
+    document.getElementById('syncLabel').textContent = pendingCount ? `Offline — ${pendingCount} pending` : 'sheet disconnected';
   }
 }
+
+// Lightweight status check — used by polling to catch reconnects fast without
+// pulling the full row data every time, and auto-flushes the offline queue.
+async function refreshSyncBadge(){
+  if(!account.sheetUrl) return;
+  try{
+    const data = await apiFetch('/sheet/status');
+    pendingCount = data.pendingCount || 0;
+    document.getElementById('syncDot').classList.toggle('stale', !data.connected);
+    document.getElementById('syncLabel').textContent = !data.connected
+      ? (pendingCount ? `Offline — ${pendingCount} pending` : 'sheet disconnected')
+      : (pendingCount ? `${pendingCount} pending sync` : 'synced just now');
+    if(data.justSynced){
+      toast(`Reconnected — synced ${data.justSynced} offline ${data.justSynced===1?'entry':'entries'}`);
+      await fetchSheet(false);
+      renderList();
+    }
+  }catch(e){}
+}
+
 function startPolling(){
   clearInterval(pollTimer);
-  pollTimer = setInterval(()=>{ if(account.sheetUrl) fetchSheet(false); }, 6000);
+  pollTimer = setInterval(()=>{ if(account.sheetUrl) refreshSyncBadge(); }, 6000);
 }
-document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && account.sheetUrl) fetchSheet(false); });
+document.addEventListener('visibilitychange', ()=>{ if(!document.hidden && account.sheetUrl) refreshSyncBadge(); });
+
+// Auto-import headers from a freshly connected (or existing) sheet into Settings > Columns
+async function importHeadersFromSheet(){
+  if(!account.sheetUrl){ toast('Connect a sheet first'); return; }
+  try{
+    const data = await apiFetch('/sheet/headers');
+    const headers = data.headers || [];
+    if(!headers.length){ toast('No headers found on the sheet'); return; }
+    const existingNames = new Set(account.columns.map(c=>c.name));
+    const added = headers.filter(h=>!existingNames.has(h)).map(h=>({ id: uid(), name: h, type: 'text', color: COLOR_PRESETS[account.columns.length % COLOR_PRESETS.length] }));
+    account.columns = [...account.columns, ...added];
+    await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) });
+    toast(added.length ? `Imported ${added.length} column${added.length===1?'':'s'} from the sheet` : 'Columns already match the sheet');
+    renderSettings();
+  }catch(err){
+    toast(err.data?.error || 'Could not read headers from the sheet');
+  }
+}
 
 /* ============ LIST SCREEN ============ */
 function renderList(){
@@ -701,6 +776,95 @@ function renderList(){
     card.addEventListener('click', ()=>openEdit(card.dataset.row));
   });
 }
+/* ============ GRID (SPREADSHEET) VIEW ============ */
+let currentView = 'cards';
+document.querySelectorAll('#viewTabCards, #viewTabGrid').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    document.querySelectorAll('#viewTabCards, #viewTabGrid').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    currentView = tab.dataset.view;
+    document.getElementById('listContent').style.display = currentView==='cards' ? 'block' : 'none';
+    document.getElementById('gridContent').style.display = currentView==='grid' ? 'block' : 'none';
+    if(currentView==='grid') renderGrid();
+  });
+});
+
+// Debounce so we don't fire a write on every keystroke while typing in a cell
+const cellSaveTimers = {};
+function queueCellSave(rowIndex, field, value){
+  const key = rowIndex+'::'+field;
+  clearTimeout(cellSaveTimers[key]);
+  cellSaveTimers[key] = setTimeout(async ()=>{
+    const row = rowsCache.rows.find(r=>String(r.rowIndex)===String(rowIndex));
+    if(!row) return;
+    const updated = { ...row.data, [field]: value };
+    try{
+      const data = await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'update', rowIndex, row: updated }) });
+      row.data = updated;
+      pendingCount = data.pendingCount || 0;
+      refreshSyncBadge();
+      if(data.queued) toast(`Sheet offline — cell change queued (${pendingCount} pending)`);
+    }catch(err){
+      toast(err.data?.error || 'Failed to save cell — try again');
+    }
+  }, 600);
+}
+
+function renderGrid(){
+  const gridContent = document.getElementById('gridContent');
+  if(!account.sheetUrl){
+    gridContent.innerHTML = emptyState('No sheet connected', 'Connect a sheet to see it as a live grid here.');
+    return;
+  }
+  if(!rowsCache || !rowsCache.rows || rowsCache.rows.length===0){
+    gridContent.innerHTML = emptyState('No entries yet', 'Add your first row using the + button below.');
+    return;
+  }
+  const cols = account.columns.length ? account.columns : rowsCache.headers.map(h=>({name:h, type:'text', color:'#0FBE8F'}));
+  const rowsSorted = [...rowsCache.rows].reverse();
+
+  let html = `<div class="grid-wrap"><table class="grid-table"><thead><tr>`;
+  cols.forEach(c=>{ html += `<th style="background:${c.color||'#0FBE8F'};">${escapeHtml(c.name)}</th>`; });
+  html += `<th style="background:#7A828A;width:40px;"></th></tr></thead><tbody>`;
+
+  rowsSorted.forEach(r=>{
+    html += `<tr data-gridrow="${r.rowIndex}">`;
+    cols.forEach(c=>{
+      const val = r.data[c.name] ?? '';
+      const inputType = c.type==='number' ? 'number' : c.type==='date' ? 'date' : c.type==='time' ? 'time' : 'text';
+      html += `<td><input class="grid-cell" type="${inputType}" data-gridfield="${escapeHtml(c.name)}" value="${escapeHtml(val)}"></td>`;
+    });
+    html += `<td class="grid-row-actions"><button class="icon-btn danger" data-gridDel="${r.rowIndex}" style="width:26px;height:26px;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+    </button></td></tr>`;
+  });
+  html += `</tbody></table></div>
+    <div class="section-sub" style="margin-top:10px;">Edit any cell directly — changes save automatically and sync to the sheet.</div>`;
+  gridContent.innerHTML = html;
+
+  gridContent.querySelectorAll('.grid-cell').forEach(input=>{
+    input.addEventListener('change', ()=>{
+      const rowIndex = input.closest('[data-gridrow]').dataset.gridrow;
+      queueCellSave(rowIndex, input.dataset.gridfield, input.value);
+    });
+  });
+  gridContent.querySelectorAll('[data-gridDel]').forEach(btn=>{
+    btn.addEventListener('click', async ()=>{
+      if(!confirm('Delete this row?')) return;
+      const rowIndex = btn.dataset.griddel;
+      try{
+        const data = await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'delete', rowIndex }) });
+        pendingCount = data.pendingCount || 0;
+        toast(data.queued ? `Delete queued (${pendingCount} pending)` : 'Deleted');
+        refreshSyncBadge();
+      }catch(err){ toast(err.data?.error || 'Failed to delete'); }
+      await fetchSheet(false);
+      renderGrid();
+      renderList();
+    });
+  });
+}
+
 function emptyState(title, sub){
   return `<div class="empty-state">
     <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#8A8D93" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="9" x2="9" y2="20"/></svg>
@@ -827,10 +991,12 @@ async function submitNewRow(){
   const btn = document.getElementById('flowNextBtn');
   btn.textContent = 'Saving...';
   try{
-    await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'append', row: flowState.values }) });
-    toast('Entry added');
+    const data = await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'append', row: flowState.values }) });
+    pendingCount = data.pendingCount || 0;
+    toast(data.queued ? `Sheet offline — saved (${pendingCount} pending, will auto-sync)` : 'Entry added');
+    refreshSyncBadge();
   }catch(err){
-    toast('Failed to save — try again');
+    toast(err.data?.error || 'Failed to save — offline queue is full');
   }
   addOverlay.classList.remove('show');
   btn.textContent = 'Submit';
@@ -884,10 +1050,12 @@ document.getElementById('doneEditBtn').addEventListener('click', async ()=>{
   const btn = document.getElementById('doneEditBtn');
   btn.textContent = 'Saving...';
   try{
-    await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'update', rowIndex: editState.rowIndex, row }) });
-    toast('Saved');
+    const data = await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'update', rowIndex: editState.rowIndex, row }) });
+    pendingCount = data.pendingCount || 0;
+    toast(data.queued ? `Sheet offline — saved (${pendingCount} pending)` : 'Saved');
+    refreshSyncBadge();
   }catch(err){
-    toast('Failed to save — try again');
+    toast(err.data?.error || 'Failed to save — try again');
   }
   editOverlay.classList.remove('show');
   btn.textContent = 'Done editing';
@@ -897,10 +1065,12 @@ document.getElementById('doneEditBtn').addEventListener('click', async ()=>{
 document.getElementById('deleteRowBtn').addEventListener('click', async ()=>{
   if(!confirm('Delete this entry?')) return;
   try{
-    await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'delete', rowIndex: editState.rowIndex }) });
-    toast('Deleted');
+    const data = await apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'delete', rowIndex: editState.rowIndex }) });
+    pendingCount = data.pendingCount || 0;
+    toast(data.queued ? `Sheet offline — delete queued (${pendingCount} pending)` : 'Deleted');
+    refreshSyncBadge();
   }catch(err){
-    toast('Failed to delete — try again');
+    toast(err.data?.error || 'Failed to delete — try again');
   }
   editOverlay.classList.remove('show');
   await fetchSheet(false);
@@ -979,19 +1149,24 @@ async function renderSettings(){
   html += `<div class="settings-group">
     <div class="settings-group-title">Columns</div>`;
   if(!account.columns.length){
-    html += `<div class="settings-row"><div class="settings-row-sub">No columns yet — add one below</div></div>`;
+    html += `<div class="settings-row"><div class="settings-row-sub">No columns yet — add one below, or import from your sheet</div></div>`;
   }
   account.columns.forEach(col=>{
-    html += `<div class="settings-row">
-      <div><div class="settings-row-label">${escapeHtml(col.name)}</div></div>
+    const c = col.color || '#0FBE8F';
+    html += `<div class="settings-row" data-editcol="${col.id}" style="cursor:pointer;">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <span style="width:12px;height:12px;border-radius:4px;background:${c};display:inline-block;flex-shrink:0;"></span>
+        <div class="settings-row-label">${escapeHtml(col.name)}</div>
+      </div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <span class="col-type-badge">${col.type}</span>
+        <span class="col-type-badge" style="background:${c}22;color:${c};">${col.type}</span>
         <button class="icon-btn danger" data-delcol="${col.id}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
       </div>
     </div>`;
   });
   html += `</div>
-    <button class="btn btn-ghost" id="addColBtn" style="margin-bottom:16px;">+ Add column</button>`;
+    <button class="btn btn-ghost" id="addColBtn" style="margin-bottom:12px;">+ Add column</button>
+    ${account.sheetUrl ? `<button class="btn btn-ghost" id="importHeadersBtn" style="margin-bottom:16px;">Import columns from sheet</button>` : ''}`;
 
   if(account.sheetUrl){
     html += `<button class="btn btn-danger-ghost" id="disconnectSheetBtn">Disconnect this sheet</button>`;
@@ -1001,8 +1176,16 @@ async function renderSettings(){
 
   document.getElementById('connectBtn')?.addEventListener('click', openConnect);
   document.getElementById('addColBtn').addEventListener('click', ()=>openColumnOverlay());
+  document.getElementById('importHeadersBtn')?.addEventListener('click', importHeadersFromSheet);
+  content.querySelectorAll('[data-editcol]').forEach(row=>{
+    row.addEventListener('click', ()=>{
+      const col = account.columns.find(c=>c.id===row.dataset.editcol);
+      if(col) openColumnOverlay(col);
+    });
+  });
   content.querySelectorAll('[data-delcol]').forEach(btn=>{
-    btn.addEventListener('click', async ()=>{
+    btn.addEventListener('click', async (e)=>{
+      e.stopPropagation();
       account.columns = account.columns.filter(c=>c.id!==btn.dataset.delcol);
       try{ await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) }); }catch(e){}
       renderSettings();
@@ -1041,20 +1224,52 @@ async function renderSettings(){
 /* ============ COLUMN OVERLAY ============ */
 const columnOverlay = document.getElementById('columnOverlay');
 let draftOptions = [];
+let editingColId = null;
+const COLOR_PRESETS = ['#0FBE8F','#3B82F6','#F59E0B','#E0503C','#8B5CF6','#EC4899'];
 
-function openColumnOverlay(){
-  document.getElementById('colName').value='';
-  document.getElementById('colType').value='text';
-  draftOptions = [];
+function openColumnOverlay(existingCol){
+  editingColId = existingCol ? existingCol.id : null;
+  document.getElementById('columnOverlayTitle').textContent = existingCol ? 'Edit column' : 'Add column';
+  document.getElementById('colName').value = existingCol ? existingCol.name : '';
+  document.getElementById('colType').value = existingCol ? existingCol.type : 'text';
+  document.getElementById('colColor').value = existingCol?.color || '#0FBE8F';
+  draftOptions = existingCol?.options ? [...existingCol.options] : [];
   renderDraftOptions();
-  document.getElementById('choiceOptionsGroup').style.display='none';
+  document.getElementById('choiceOptionsGroup').style.display = (existingCol?.type==='choice') ? 'block' : 'none';
+  renderColorPresets();
+  renderColPreview();
   columnOverlay.classList.add('show');
 }
 document.getElementById('closeColumn').addEventListener('click', ()=>columnOverlay.classList.remove('show'));
 
 document.getElementById('colType').addEventListener('change', (e)=>{
   document.getElementById('choiceOptionsGroup').style.display = e.target.value==='choice' ? 'block' : 'none';
+  renderColPreview();
 });
+document.getElementById('colName').addEventListener('input', renderColPreview);
+document.getElementById('colColor').addEventListener('input', renderColPreview);
+
+function renderColorPresets(){
+  const wrap = document.getElementById('colorPresets');
+  wrap.innerHTML = COLOR_PRESETS.map(c=>`<div class="chip" data-preset="${c}" style="width:26px;height:26px;padding:0;border-radius:50%;background:${c};border:2px solid var(--line);"></div>`).join('');
+  wrap.querySelectorAll('[data-preset]').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      document.getElementById('colColor').value = el.dataset.preset;
+      renderColPreview();
+    });
+  });
+}
+function renderColPreview(){
+  const name = document.getElementById('colName').value.trim() || 'Column name';
+  const type = document.getElementById('colType').value;
+  const color = document.getElementById('colColor').value;
+  document.getElementById('colPreview').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;">
+      <span style="width:14px;height:14px;border-radius:4px;background:${color};display:inline-block;"></span>
+      <span style="font-weight:600;font-size:14.5px;">${escapeHtml(name)}</span>
+    </div>
+    <span class="col-type-badge" style="background:${color}22;color:${color};">${type}</span>`;
+}
 
 function renderDraftOptions(){
   const list = document.getElementById('choiceOptionsList');
@@ -1089,20 +1304,32 @@ document.getElementById('newOptionInput').addEventListener('keydown', e=>{ if(e.
 document.getElementById('saveColumnBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('colName').value.trim();
   const type = document.getElementById('colType').value;
+  const color = document.getElementById('colColor').value;
   if(!name){ toast('Enter a column name'); return; }
   if(type==='choice' && draftOptions.length===0){ toast('Add at least one option'); return; }
-  const col = { id: uid(), name, type };
-  if(type==='choice') col.options = [...draftOptions];
-  account.columns.push(col);
+
+  if(editingColId){
+    const existing = account.columns.find(c=>c.id===editingColId);
+    if(existing){
+      existing.name = name; existing.type = type; existing.color = color;
+      existing.options = type==='choice' ? [...draftOptions] : undefined;
+    }
+  } else {
+    const col = { id: uid(), name, type, color };
+    if(type==='choice') col.options = [...draftOptions];
+    account.columns.push(col);
+  }
+
   try{
     await apiFetch('/account/columns', { method:'PUT', body: JSON.stringify({ columns:account.columns }) });
   }catch(e){ toast('Failed to save column'); }
   columnOverlay.classList.remove('show');
   renderSettings();
-  toast('Column added — synced to all devices');
-  // push header update to sheet
+  toast(editingColId ? 'Column updated — synced to all devices' : 'Column added — synced to all devices');
+  // push header update to the sheet (auto-queues on the backend if it's offline)
   if(account.sheetUrl){
-    apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'setHeaders', headers: account.columns.map(c=>c.name) }) }).catch(()=>{});
+    apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'setHeaders', headers: account.columns.map(c=>c.name) }) })
+      .then(refreshSyncBadge).catch(()=>{});
   }
 });
 
