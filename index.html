@@ -379,6 +379,26 @@
     </div>
   </div>
 
+  <!-- SHEET TABS OVERLAY -->
+  <div class="overlay" id="tabsOverlay">
+    <div class="overlay-header">
+      <div style="font-size:15px;font-weight:600;">Sheets</div>
+      <button class="overlay-close" id="closeTabs">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="flow-body" style="padding-top:8px;">
+      <div id="tabsList"></div>
+      <div class="field-group" style="margin-top:10px;">
+        <label>New sheet name</label>
+        <input type="text" id="newTabName" placeholder="e.g. Sheet2">
+      </div>
+    </div>
+    <div class="flow-footer">
+      <button class="btn btn-gold" id="createTabBtn">+ Create sheet</button>
+    </div>
+  </div>
+
   <!-- COLUMN SETUP OVERLAY -->
   <div class="overlay" id="columnOverlay">
     <div class="overlay-header">
@@ -419,6 +439,11 @@
           <div class="chip-row" id="colorPresets" style="flex:1;"></div>
         </div>
       </div>
+      <div class="field-group" style="display:flex; align-items:center; justify-content:space-between;">
+        <label style="margin:0;">Strong text (bold)</label>
+        <input type="checkbox" id="colBold" style="width:20px; height:20px; accent-color:var(--gold); flex:none;">
+      </div>
+      <div class="section-sub" style="margin-top:-8px;">Color and bold are applied to the full column on the connected Google Sheet, not just this app.</div>
       <div class="field-group">
         <label>Preview</label>
         <div id="colPreview" style="display:flex; align-items:center; justify-content:space-between; background:var(--card); border:1px solid var(--line); border-radius:5px; padding:12px 14px;"></div>
@@ -480,7 +505,7 @@ async function apiFetch(path, opts={}){
 }
 
 /* ============ STATE ============ */
-let account = { key:'', sheetName:'', sheetUrl:'', columns:[] };
+let account = { key:'', sheetName:'', sheetUrl:'', columns:[], activeSheetTab:'' };
 let rowsCache = null; // {headers, rows}
 let pollTimer = null;
 let flowState = { colIndex:0, values:{}, columns:[] };
@@ -669,6 +694,67 @@ document.getElementById('saveConnectBtn').addEventListener('click', async ()=>{
   }
 });
 
+/* ============ SHEET TABS (Sheet1, Sheet2, ...) ============ */
+const tabsOverlay = document.getElementById('tabsOverlay');
+document.getElementById('closeTabs').addEventListener('click', ()=>tabsOverlay.classList.remove('show'));
+
+async function openTabsOverlay(){
+  tabsOverlay.classList.add('show');
+  document.getElementById('tabsList').innerHTML = `<div class="settings-row-sub">Loading sheets...</div>`;
+  document.getElementById('newTabName').value = '';
+  try{
+    const data = await apiFetch('/sheet/tabs');
+    renderTabsList(data.tabs || [], data.activeTab || account.activeSheetTab);
+  }catch(err){
+    document.getElementById('tabsList').innerHTML = `<div class="settings-row-sub">Could not load sheets — check your connection.</div>`;
+  }
+}
+
+function renderTabsList(tabs, activeTab){
+  const wrap = document.getElementById('tabsList');
+  if(!tabs.length){ wrap.innerHTML = `<div class="settings-row-sub">No sheets found</div>`; return; }
+  wrap.innerHTML = tabs.map(t=>`
+    <div class="settings-row" data-tab="${escapeHtml(t)}" style="cursor:pointer;">
+      <div class="settings-row-label">${escapeHtml(t)}</div>
+      ${t===activeTab ? `<span class="device-badge">Active</span>` : `<span class="col-type-badge">Switch</span>`}
+    </div>`).join('');
+  wrap.querySelectorAll('[data-tab]').forEach(row=>{
+    row.addEventListener('click', async ()=>{
+      const name = row.dataset.tab;
+      try{
+        await apiFetch('/sheet/tabs/active', { method:'PUT', body: JSON.stringify({ name }) });
+        account.activeSheetTab = name;
+        toast(`Switched to ${name}`);
+        tabsOverlay.classList.remove('show');
+        rowsCache = null;
+        await fetchSheet(false);
+        renderList();
+        renderSettings();
+      }catch(err){ toast('Failed to switch sheet'); }
+    });
+  });
+}
+
+document.getElementById('createTabBtn').addEventListener('click', async ()=>{
+  const name = document.getElementById('newTabName').value.trim();
+  if(!name){ toast('Enter a name for the new sheet'); return; }
+  const btn = document.getElementById('createTabBtn');
+  btn.textContent = 'Creating...'; btn.disabled = true;
+  try{
+    await apiFetch('/sheet/tabs', { method:'POST', body: JSON.stringify({ name }) });
+    account.activeSheetTab = name;
+    toast(`Created "${name}" and switched to it`);
+    tabsOverlay.classList.remove('show');
+    rowsCache = null;
+    await fetchSheet(false);
+    renderList();
+    renderSettings();
+  }catch(err){
+    toast(err.data?.error || 'Failed to create sheet');
+  }
+  btn.textContent = '+ Create sheet'; btn.disabled = false;
+});
+
 /* ============ FETCH / SYNC (sheet data, via backend proxy) ============ */
 let pendingCount = 0;
 
@@ -824,7 +910,7 @@ function renderGrid(){
   const rowsSorted = [...rowsCache.rows].reverse();
 
   let html = `<div class="grid-wrap"><table class="grid-table"><thead><tr>`;
-  cols.forEach(c=>{ html += `<th style="background:${c.color||'#0FBE8F'};">${escapeHtml(c.name)}</th>`; });
+  cols.forEach(c=>{ html += `<th style="background:${c.color||'#0FBE8F'};${c.bold?'font-weight:800;':''}">${escapeHtml(c.name)}</th>`; });
   html += `<th style="background:#7A828A;width:40px;"></th></tr></thead><tbody>`;
 
   rowsSorted.forEach(r=>{
@@ -1143,8 +1229,10 @@ async function renderSettings(){
   html += `<div class="settings-group">
     <div class="settings-group-title">Connection</div>
     ${account.sheetUrl ? `<div class="settings-row"><div><div class="settings-row-label">${escapeHtml(account.sheetName)}</div><div class="settings-row-sub">${escapeHtml((account.sheetUrl||'').slice(0,38))}...</div></div></div>` : `<div class="settings-row"><div class="settings-row-sub">No sheet connected</div></div>`}
+    ${account.sheetUrl ? `<div class="settings-row"><div><div class="settings-row-label">Active sheet tab</div><div class="settings-row-sub">${escapeHtml(account.activeSheetTab || 'Sheet1')}</div></div></div>` : ''}
   </div>
-  <button class="btn btn-ghost" id="connectBtn" style="margin-bottom:16px;">${account.sheetUrl ? 'Update sheet connection' : 'Connect a sheet'}</button>`;
+  <button class="btn btn-ghost" id="connectBtn" style="margin-bottom:12px;">${account.sheetUrl ? 'Update sheet connection' : 'Connect a sheet'}</button>
+  ${account.sheetUrl ? `<button class="btn btn-ghost" id="manageTabsBtn" style="margin-bottom:16px;">Manage sheets (tabs)</button>` : ''}`;
 
   html += `<div class="settings-group">
     <div class="settings-group-title">Columns</div>`;
@@ -1175,6 +1263,7 @@ async function renderSettings(){
   content.innerHTML = html;
 
   document.getElementById('connectBtn')?.addEventListener('click', openConnect);
+  document.getElementById('manageTabsBtn')?.addEventListener('click', openTabsOverlay);
   document.getElementById('addColBtn').addEventListener('click', ()=>openColumnOverlay());
   document.getElementById('importHeadersBtn')?.addEventListener('click', importHeadersFromSheet);
   content.querySelectorAll('[data-editcol]').forEach(row=>{
@@ -1233,6 +1322,7 @@ function openColumnOverlay(existingCol){
   document.getElementById('colName').value = existingCol ? existingCol.name : '';
   document.getElementById('colType').value = existingCol ? existingCol.type : 'text';
   document.getElementById('colColor').value = existingCol?.color || '#0FBE8F';
+  document.getElementById('colBold').checked = !!existingCol?.bold;
   draftOptions = existingCol?.options ? [...existingCol.options] : [];
   renderDraftOptions();
   document.getElementById('choiceOptionsGroup').style.display = (existingCol?.type==='choice') ? 'block' : 'none';
@@ -1248,6 +1338,7 @@ document.getElementById('colType').addEventListener('change', (e)=>{
 });
 document.getElementById('colName').addEventListener('input', renderColPreview);
 document.getElementById('colColor').addEventListener('input', renderColPreview);
+document.getElementById('colBold').addEventListener('change', renderColPreview);
 
 function renderColorPresets(){
   const wrap = document.getElementById('colorPresets');
@@ -1263,10 +1354,11 @@ function renderColPreview(){
   const name = document.getElementById('colName').value.trim() || 'Column name';
   const type = document.getElementById('colType').value;
   const color = document.getElementById('colColor').value;
+  const bold = document.getElementById('colBold').checked;
   document.getElementById('colPreview').innerHTML = `
     <div style="display:flex;align-items:center;gap:10px;">
       <span style="width:14px;height:14px;border-radius:4px;background:${color};display:inline-block;"></span>
-      <span style="font-weight:600;font-size:14.5px;">${escapeHtml(name)}</span>
+      <span style="font-weight:${bold?800:600};font-size:14.5px;">${escapeHtml(name)}</span>
     </div>
     <span class="col-type-badge" style="background:${color}22;color:${color};">${type}</span>`;
 }
@@ -1305,19 +1397,23 @@ document.getElementById('saveColumnBtn').addEventListener('click', async ()=>{
   const name = document.getElementById('colName').value.trim();
   const type = document.getElementById('colType').value;
   const color = document.getElementById('colColor').value;
+  const bold = document.getElementById('colBold').checked;
   if(!name){ toast('Enter a column name'); return; }
   if(type==='choice' && draftOptions.length===0){ toast('Add at least one option'); return; }
 
+  let savedCol;
   if(editingColId){
     const existing = account.columns.find(c=>c.id===editingColId);
     if(existing){
-      existing.name = name; existing.type = type; existing.color = color;
+      existing.name = name; existing.type = type; existing.color = color; existing.bold = bold;
       existing.options = type==='choice' ? [...draftOptions] : undefined;
+      savedCol = existing;
     }
   } else {
-    const col = { id: uid(), name, type, color };
+    const col = { id: uid(), name, type, color, bold };
     if(type==='choice') col.options = [...draftOptions];
     account.columns.push(col);
+    savedCol = col;
   }
 
   try{
@@ -1325,11 +1421,15 @@ document.getElementById('saveColumnBtn').addEventListener('click', async ()=>{
   }catch(e){ toast('Failed to save column'); }
   columnOverlay.classList.remove('show');
   renderSettings();
-  toast(editingColId ? 'Column updated — synced to all devices' : 'Column added — synced to all devices');
-  // push header update to the sheet (auto-queues on the backend if it's offline)
+  toast(editingColId ? 'Column updated — syncing style to sheet' : 'Column added — syncing style to sheet');
+
   if(account.sheetUrl){
+    // push header text to the sheet
     apiFetch('/sheet/write', { method:'POST', body: JSON.stringify({ action:'setHeaders', headers: account.columns.map(c=>c.name) }) })
       .then(refreshSyncBadge).catch(()=>{});
+    // push color + bold styling onto the FULL column on the live sheet
+    apiFetch('/sheet/format', { method:'POST', body: JSON.stringify({ columns: [{ name: savedCol.name, color: savedCol.color, bold: !!savedCol.bold }] }) })
+      .catch(()=>{ toast('Style saved here, but could not push to the sheet yet'); });
   }
 });
 
